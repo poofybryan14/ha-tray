@@ -1,0 +1,42 @@
+[package]
+name = "ha-tray"
+version = "0.2.0"
+edition = "2021"
+description = "Widget + icône de notification ultra-léger pour Home Assistant"
+
+[dependencies]
+# WebSocket bloquant (aucun runtime async => pas de threads de fond inutiles).
+# La feature native-tls utilise Schannel (TLS natif Windows) : pas d'OpenSSL, pas de ring.
+tungstenite = { version = "0.24", features = ["native-tls"] }
+native-tls = "0.2"
+# Client HTTP bloquant minimal pour les actions REST ponctuelles.
+ureq = { version = "2.10", default-features = false, features = ["json", "native-tls"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+
+[dependencies.windows]
+version = "0.58"
+features = [
+  "Win32_Foundation",
+  "Win32_Graphics_Gdi",
+  "Win32_Security_Cryptography",
+  "Win32_Storage_FileSystem",
+  "Win32_System_Com",
+  "Win32_System_LibraryLoader",
+  "Win32_System_Threading",
+  "Win32_UI_HiDpi",
+  "Win32_UI_Input_KeyboardAndMouse",
+  "Win32_UI_Shell",
+  "Win32_UI_WindowsAndMessaging",
+]
+
+[build-dependencies]
+# Embarque l'icône et les informations de version dans l'exécutable (voir build.rs).
+winresource = "0.1"
+
+[profile.release]
+opt-level = "z"     # taille minimale
+lto = true          # optimisation inter-crates
+codegen-units = 1
+panic = "abort"     # pas de code de déroulement de pile
+strip = true        # supprime les symboles de debug

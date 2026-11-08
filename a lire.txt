@@ -1,0 +1,5 @@
+Lancer update.cmd pour mettre a jjour le programme
+
+Exécuter cargo build --release a la racine pour avoir un .exe dans target/release/
+
+exécuter le installer/HaTray.iss pour avoir un installateur .exe propre dans installer/output

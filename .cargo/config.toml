@@ -1,0 +1,4 @@
+# Lie le runtime C (CRT) statiquement : l'exécutable n'a besoin d'aucune DLL
+# Visual C++ Redistributable sur la machine cible.
+[target.x86_64-pc-windows-msvc]
+rustflags = ["-C", "target-feature=+crt-static"]
