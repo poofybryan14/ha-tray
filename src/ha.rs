@@ -80,14 +80,35 @@ struct RawState {
 struct Attrs {
     friendly_name: Option<String>,
     brightness: Option<f64>,
+    rgb_color: Option<Vec<f64>>,
+    supported_color_modes: Option<Vec<String>>,
+    min_color_temp_kelvin: Option<f64>,
+    max_color_temp_kelvin: Option<f64>,
 }
 
 fn to_entity(r: &RawState) -> Entity {
+    let a = &r.attributes;
+    let modes = a.supported_color_modes.as_deref().unwrap_or(&[]);
+    let can_color = modes
+        .iter()
+        .any(|m| matches!(m.as_str(), "hs" | "xy" | "rgb" | "rgbw" | "rgbww"));
+    let can_temp = modes.iter().any(|m| m == "color_temp");
+    let rgb = a
+        .rgb_color
+        .as_ref()
+        .filter(|v| v.len() >= 3)
+        .map(|v| [v[0].clamp(0.0, 255.0) as u8, v[1].clamp(0.0, 255.0) as u8, v[2].clamp(0.0, 255.0) as u8]);
+
     Entity {
-        name: r.attributes.friendly_name.clone().unwrap_or_else(|| r.entity_id.clone()),
+        name: a.friendly_name.clone().unwrap_or_else(|| r.entity_id.clone()),
         on: r.state == "on",
-        brightness: r.attributes.brightness.unwrap_or(0.0).clamp(0.0, 255.0) as u8,
+        brightness: a.brightness.unwrap_or(0.0).clamp(0.0, 255.0) as u8,
         is_light: r.entity_id.starts_with("light."),
+        rgb,
+        can_color,
+        can_temp,
+        ct_min: a.min_color_temp_kelvin.unwrap_or(2000.0).clamp(1000.0, 10000.0) as u16,
+        ct_max: a.max_color_temp_kelvin.unwrap_or(6500.0).clamp(1000.0, 10000.0) as u16,
     }
 }
 
@@ -297,6 +318,17 @@ pub fn set_brightness(id: &str, pct: i32) {
     } else {
         call("light", "turn_on", json!({ "entity_id": id, "brightness_pct": pct.min(100) }));
     }
+}
+
+/// Couleur : teinte 0..360, saturation 0..100. La luminosité n'est pas modifiée.
+pub fn set_hs(id: &str, hue: f64, sat: f64) {
+    let (h, s) = ((hue * 10.0).round() / 10.0, (sat * 10.0).round() / 10.0);
+    call("light", "turn_on", json!({ "entity_id": id, "hs_color": [h, s] }));
+}
+
+/// Température de blanc en Kelvin (dans la plage supportée par l'ampoule).
+pub fn set_kelvin(id: &str, kelvin: u32) {
+    call("light", "turn_on", json!({ "entity_id": id, "color_temp_kelvin": kelvin }));
 }
 
 pub fn activate_scene(id: &str) {

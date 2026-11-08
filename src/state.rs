@@ -13,6 +13,15 @@ pub struct Entity {
     /// Luminosité Home Assistant (0-255). 0 si inconnue / éteinte.
     pub brightness: u8,
     pub is_light: bool, // sinon : scène
+    /// Couleur actuelle (RGB) si la lumière la fournit (sert à teinter la barre).
+    pub rgb: Option<[u8; 3]>,
+    /// Lumière colorée (hs / xy / rgb...).
+    pub can_color: bool,
+    /// Lumière à température de blanc réglable.
+    pub can_temp: bool,
+    /// Plage de températures supportée (Kelvin).
+    pub ct_min: u16,
+    pub ct_max: u16,
 }
 
 /// Paramètres de connexion. Modifiables à chaud via le menu « Paramètres ».

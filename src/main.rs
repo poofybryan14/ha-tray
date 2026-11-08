@@ -3,6 +3,7 @@
 
 mod config;
 mod ha;
+mod palette;
 mod startup;
 mod state;
 mod ui;

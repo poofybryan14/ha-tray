@@ -9,7 +9,7 @@
 //!  - aucune clé de registre : rien n'est écrit en dehors de %APPDATA%\HaTray.
 
 use crate::{
-    config, ha, startup,
+    config, ha, palette, startup,
     state::{app, Conn, Entity},
 };
 use std::{
@@ -95,7 +95,7 @@ static DLG_OUT: Mutex<(String, String, bool)> = Mutex::new((String::new(), Strin
 
 // ------------------------------------------------------------------ utilitaires
 
-fn s(v: i32) -> i32 {
+pub(crate) fn s(v: i32) -> i32 {
     v * DPI.load(Ordering::Relaxed) as i32 / 96
 }
 
@@ -265,6 +265,28 @@ unsafe extern "system" fn wndproc(hwnd: HWND, msg: u32, wp: WPARAM, lp: LPARAM) 
             }
             LRESULT(0)
         }
+        // Clic droit sur une lumière : sélecteur de couleur.
+        WM_RBUTTONUP => {
+            if let Some((idx, _)) = row_at(hi(lp)) {
+                if let Some((id, e)) = entity_at(idx) {
+                    open_palette(hwnd, &id, &e);
+                }
+            }
+            LRESULT(0)
+        }
+        // La palette vient de se fermer : on rend le focus au widget, ou on le rétracte
+        // si l'utilisateur est allé cliquer ailleurs.
+        palette::WM_PALETTE_CLOSED => {
+            if wp.0 != 0 {
+                let _ = SetForegroundWindow(hwnd);
+            } else if !app().pinned.load(Ordering::Relaxed)
+                && GetForegroundWindow() != hwnd
+                && IsWindowVisible(hwnd).as_bool()
+            {
+                hide(hwnd);
+            }
+            LRESULT(0)
+        }
         WM_MOUSEWHEEL => {
             let delta = (wp.0 >> 16) as u16 as i16 as i32;
             let mut pt = POINT { x: lo(lp), y: hi(lp) };
@@ -279,6 +301,7 @@ unsafe extern "system" fn wndproc(hwnd: HWND, msg: u32, wp: WPARAM, lp: LPARAM) 
             if inactive
                 && !app().pinned.load(Ordering::Relaxed)
                 && DRAG.lock().unwrap().is_none()
+                && !palette::is_open()
                 && IsWindowVisible(hwnd).as_bool()
             {
                 hide(hwnd);
@@ -426,9 +449,21 @@ unsafe fn on_button_down(hwnd: HWND, x: i32, y: i32) {
         LAST_SENT_MS.store(0, Ordering::Relaxed);
         let _ = SetCapture(hwnd); // la souris peut sortir de la fenêtre sans interrompre le geste
         drag_to(hwnd, x);
+    } else if x < s(PAD + 20) && (e.can_color || e.can_temp) {
+        open_palette(hwnd, &id, &e); // pastille de couleur à gauche du nom
     } else {
         ha::toggle(&id);
     }
+}
+
+/// Ouvre le sélecteur de couleur près du curseur (lumières colorées ou à blanc réglable).
+unsafe fn open_palette(hwnd: HWND, id: &str, e: &Entity) {
+    if !e.is_light || !(e.can_color || e.can_temp) {
+        return;
+    }
+    let mut pt = POINT::default();
+    let _ = GetCursorPos(&mut pt);
+    palette::open(hwnd, id, e, pt);
 }
 
 /// Pendant le glissement : affichage immédiat + envoi limité (~11/s) vers Home Assistant.
@@ -1006,9 +1041,15 @@ unsafe fn draw(hdc: HDC, wd: i32, ht: i32) {
         let band = if e.is_light { s(ROW_H) - s(12) } else { s(ROW_H) };
         let on_color = rgb(255, 200, 80);
         let dim_color = rgb(150, 150, 158);
+        // Couleur réelle de la lumière (si fournie) pour la pastille et la barre.
+        let light_color = e.rgb.filter(|_| lit).map(|c| rgb(c[0], c[1], c[2])).unwrap_or(on_color);
 
         let name_color = if e.is_light && !lit { dim_color } else { rgb(235, 235, 240) };
-        text(hdc, &e.name, RECT { left: s(PAD), top, right: wd - s(96), bottom: top + band }, name_color, DT_LEFT);
+        if e.is_light && (e.can_color || e.can_temp) {
+            let dot_color = if lit { light_color } else { dim_color };
+            text(hdc, "●", RECT { left: s(PAD), top, right: s(PAD + 18), bottom: top + band }, dot_color, DT_LEFT);
+        }
+        text(hdc, &e.name, RECT { left: s(PAD + 20), top, right: wd - s(96), bottom: top + band }, name_color, DT_LEFT);
 
         let (label, label_color) = if !e.is_light {
             ("▶ Activer".to_string(), rgb(120, 180, 255))
@@ -1026,7 +1067,7 @@ unsafe fn draw(hdc: HDC, wd: i32, ht: i32) {
             fill(hdc, &RECT { left: bx0, top: by0, right: bx1, bottom: by1 }, rgb(58, 58, 66));
             let fx = bx0 + (bx1 - bx0) * lv / 100;
             if fx > bx0 {
-                fill(hdc, &RECT { left: bx0, top: by0, right: fx, bottom: by1 }, on_color);
+                fill(hdc, &RECT { left: bx0, top: by0, right: fx, bottom: by1 }, light_color);
             }
         }
     }
