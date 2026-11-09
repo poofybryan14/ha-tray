@@ -4,7 +4,10 @@
 ; Pré-requis  : avoir lancé « cargo build --release » (l'exécutable est lu dans target\release).
 
 #define AppName    "HaTray"
-#define AppVersion "0.2.0"
+; La version est imposee par /DAppVersion=x.y.z lors d'une release (voir release.yml).
+#ifndef AppVersion
+  #define AppVersion "0.0.0"
+#endif
 #define AppExe     "ha-tray.exe"
 
 [Setup]

@@ -1,0 +1,53 @@
+name: Release
+
+# Se déclenche quand on pousse un tag de version (v0.3.0, v1.0.0...).
+# Le script release.ps1 crée et pousse ce tag pour vous.
+on:
+  push:
+    tags: ["v*"]
+
+# Nécessaire pour créer la release et y déposer les fichiers.
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      # Accélère les compilations suivantes (les dépendances sont mises en cache).
+      - uses: Swatinem/rust-cache@v2
+
+      - name: Vérifier que le tag correspond à Cargo.toml
+        id: ver
+        shell: pwsh
+        run: |
+          $ver = "${{ github.ref_name }}".TrimStart('v')
+          $cargo = (Select-String -Path Cargo.toml -Pattern '^version = "(.+)"' | Select-Object -First 1).Matches[0].Groups[1].Value
+          if ($ver -ne $cargo) { throw "Le tag ($ver) ne correspond pas a la version de Cargo.toml ($cargo)." }
+          "version=$ver" >> $env:GITHUB_OUTPUT
+
+      - name: Compiler
+        run: cargo build --release
+
+      - name: Construire l'installateur (Inno Setup)
+        shell: pwsh
+        run: |
+          choco install innosetup -y --no-progress
+          & "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe" "/DAppVersion=${{ steps.ver.outputs.version }}" installer\HaTray.iss
+          if ($LASTEXITCODE -ne 0) { throw "La compilation de l'installateur a echoue." }
+
+      - name: Rassembler les fichiers
+        shell: pwsh
+        run: |
+          Copy-Item target\release\ha-tray.exe ha-tray.exe
+          Copy-Item installer\output\HaTray-Setup.exe HaTray-Setup.exe
+
+      - name: Publier la release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            ha-tray.exe
+            HaTray-Setup.exe
+          generate_release_notes: true
